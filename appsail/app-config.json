@@ -1,0 +1,21 @@
+{
+  "command": "python3 app.py",
+  "build_path": "./build",
+  "stack": "python_3_12",
+  "memory": 512,
+  "env_variables": {
+    "QUICKML_API_HOST": "https://api.catalyst.zoho.in",
+    "ZOHO_ACCOUNTS_URL": "https://accounts.zoho.in",
+    "QUICKML_PROJECT_ID": "",
+    "QUICKML_ENDPOINT_KEY": "",
+    "QUICKML_ENVIRONMENT": "Development",
+    "ZOHO_ORG_ID": "",
+    "ZOHO_CLIENT_ID": "",
+    "ZOHO_CLIENT_SECRET": "",
+    "ZOHO_REFRESH_TOKEN": "",
+    "GRIDMIND_STORAGE": "memory",
+    "GRIDMIND_TABLE": "ForecastRuns",
+    "GRIDMIND_BUCKET": ""
+  },
+  "catalyst_auth": false
+}

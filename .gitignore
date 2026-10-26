@@ -1,0 +1,20 @@
+# Secrets: QuickML endpoint key, OAuth client + refresh token
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# AppSail build output (vendored packages + app-config.json with real credentials)
+appsail/build/
+
+# Catalyst CLI local state and logs
+.catalystrc
+*.log
+
+# Generated outputs
+predictions.csv
+
+.DS_Store

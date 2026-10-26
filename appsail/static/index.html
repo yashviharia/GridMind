@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GridMind · Microgrid Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><path d="M18 2 6 18h8l-2 12 12-16h-8z" fill="currentColor"/></svg>
+    <div>
+      <h1>GridMind</h1>
+      <p>Microgrid demand forecasting &amp; dispatch</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="modelBadge" class="pill pill-muted" title="Where forecasts come from">model: …</span>
+    <span id="storageBadge" class="pill pill-muted">storage: …</span>
+    <span class="clock mono" id="clock"></span>
+  </div>
+</header>
+
+<div id="banners" class="banners" aria-live="polite"></div>
+
+<main class="layout">
+  <!-- ───────── Controls ───────── -->
+  <aside class="panel controls">
+    <section>
+      <h2>Telemetry input</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="scenario" role="tab">Scenarios</button>
+        <button class="tab" data-tab="upload" role="tab">CSV upload</button>
+        <button class="tab" data-tab="manual" role="tab">Manual</button>
+      </div>
+
+      <div class="tabpane" data-pane="scenario">
+        <div id="scenarioList" class="scenario-list"></div>
+      </div>
+
+      <div class="tabpane" data-pane="upload" hidden>
+        <label id="dropzone" class="dropzone">
+          <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
+          <strong>Drop a telemetry CSV</strong>
+          <span>or click to browse · columns: timestamp, ambient_temp_c, humidity_pct, solar_irradiance_wm2</span>
+        </label>
+        <p class="hint">Messy data is fine: missing values are interpolated, bad readings rejected, gaps up to 6 h filled, and every fix is listed under Data quality.</p>
+      </div>
+
+      <div class="tabpane" data-pane="manual" hidden>
+        <div class="manual-head">
+          <label>Start <input type="datetime-local" id="manualStart" step="3600"></label>
+          <button class="btn btn-ghost" id="manualFill" title="Copy the selected scenario's weather">Prefill</button>
+        </div>
+        <div class="manual-table-wrap">
+          <table class="manual-table" id="manualTable">
+            <thead><tr><th>Hour</th><th>Temp °C</th><th>RH %</th><th>Solar W/m²</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button class="btn btn-primary wide" id="manualRun">Forecast these 24 hours</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>What-if: temperature shift <span class="mono" id="offsetLabel">+0.0 °C</span></h2>
+      <input type="range" id="tempOffset" min="-8" max="6" step="0.5" value="0">
+      <div class="range-scale"><span>cooler</span><span>forecast</span><span>hotter</span></div>
+    </section>
+
+    <section>
+      <details id="batteryDetails">
+        <summary><h2>Battery &amp; solar</h2></summary>
+        <div class="field-grid">
+          <label>Capacity (kWh)<input type="number" data-bat="capacity_kwh" value="2500" min="50" step="50"></label>
+          <label>Start charge (%)<input type="number" data-bat="initial_soc_pct" value="80" min="0" max="100"></label>
+          <label>Max power (kW)<input type="number" data-bat="max_power_kw" value="300" min="10" step="10"></label>
+          <label>Solar array (kWp)<input type="number" data-bat="pv_capacity_kwp" value="500" min="0" step="10"></label>
+          <label>Min charge (%)<input type="number" data-bat="min_soc_pct" value="10" min="0" max="90"></label>
+          <label>Peak tariff (₹/kWh)<input type="number" data-bat="tariff_peak" value="12" min="0" step="0.5"></label>
+        </div>
+        <button class="btn btn-ghost wide" id="applyBattery">Re-run with these settings</button>
+      </details>
+    </section>
+
+    <section class="rules">
+      <h2>Dispatch rules</h2>
+      <ul>
+        <li><span class="dot dot-ren"></span><b>Renewable storage</b> when demand &gt; 160 kW <i>or</i> 18:00–22:00</li>
+        <li><span class="dot dot-grid"></span><b>Main grid</b> otherwise</li>
+        <li><span class="dot dot-crit"></span><b>Critical overload</b> when demand ≥ 200 kW</li>
+      </ul>
+    </section>
+  </aside>
+
+  <!-- ───────── Main ───────── -->
+  <div class="main">
+    <section class="live panel" id="livePanel">
+      <div class="live-state">
+        <div class="live-label">Grid state at <span class="mono" id="liveTime">--:--</span></div>
+        <div id="liveMode" class="mode-badge">—</div>
+        <div class="live-reason" id="liveReason"></div>
+      </div>
+      <div class="live-metrics">
+        <div><span class="k">Forecast demand</span><span class="v mono" id="liveDemand">—</span></div>
+        <div><span class="k">90% range</span><span class="v mono small" id="liveRange">—</span></div>
+        <div><span class="k">P(overload)</span><span class="v mono" id="liveRisk">—</span></div>
+        <div><span class="k">Supply mix</span><span class="v small" id="liveMix">—</span></div>
+      </div>
+      <div class="soc">
+        <svg viewBox="0 0 120 120" class="soc-ring">
+          <circle cx="60" cy="60" r="50" class="soc-track"/>
+          <circle cx="60" cy="60" r="50" class="soc-fill" id="socArc"/>
+        </svg>
+        <div class="soc-text"><span class="mono" id="socValue">—</span><small>battery</small></div>
+      </div>
+      <div class="live-controls">
+        <button class="btn btn-primary" id="playBtn" aria-label="Play hour-by-hour replay">▶ Replay day</button>
+        <input type="range" id="cursor" min="0" max="23" value="0" aria-label="Hour cursor">
+      </div>
+    </section>
+
+    <section class="kpis" id="kpis"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>24-hour load forecast</h2>
+        <div class="legend">
+          <span><i class="sw sw-line"></i>forecast</span>
+          <span><i class="sw sw-band"></i>90% interval</span>
+          <span><i class="sw sw-base"></i>base load</span>
+          <span><i class="sw sw-160"></i>160 kW</span>
+          <span><i class="sw sw-200"></i>200 kW</span>
+          <span><i class="sw sw-peak"></i>peak window</span>
+        </div>
+      </div>
+      <div class="chart-box tall"><canvas id="loadChart"></canvas></div>
+      <div class="timeline" id="timeline" aria-label="Grid mode by hour"></div>
+      <div class="timeline-legend"><span><i class="dot dot-ren"></i>renewable storage</span><span><i class="dot dot-grid"></i>main grid</span><span>⚠ overload</span><span>⇄ switch</span></div>
+    </section>
+
+    <div class="two-col">
+      <section class="panel">
+        <div class="panel-head"><h2>Battery &amp; supply</h2><span class="muted small" id="batteryNote"></span></div>
+        <div class="chart-box"><canvas id="batteryChart"></canvas></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Why this demand?</h2><span class="muted small">click any hour</span></div>
+        <div id="explain" class="explain"><p class="muted">Select an hour in the chart or table to break its forecast into base load and weather-driven load.</p></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Dispatch schedule</h2><span class="muted small" id="tableNote"></span></div>
+      <div class="table-wrap">
+        <table class="sched" id="schedule">
+          <thead><tr><th>Hour</th><th>Temp</th><th>Solar</th><th>Demand (kW)</th><th>90% range</th><th>P(≥200)</th><th>Mode</th><th>Alert</th><th>Battery</th><th>Reason</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="two-col">
+      <section class="panel">
+        <div class="panel-head"><h2>Data quality</h2><span class="muted small" id="dqNote"></span></div>
+        <ul class="dq" id="dqList"></ul>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>System log</h2><button class="btn btn-ghost small" id="refreshLog">refresh</button></div>
+        <ul class="log" id="logList"></ul>
+      </section>
+    </div>
+
+    <section class="panel model-card">
+      <div class="panel-head"><h2>Model card</h2><span class="muted small">rolling-origin validation, 4 × 400 h folds</span></div>
+      <div class="model-grid">
+        <div>
+          <div class="chart-box short"><canvas id="modelChart"></canvas></div>
+        </div>
+        <div class="model-text" id="modelText"></div>
+      </div>
+    </section>
+
+    <footer class="foot">GridMind · HackSphere 3.0 · Zoho Catalyst AppSail + QuickML · run <span class="mono" id="runId">—</span></footer>
+  </div>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

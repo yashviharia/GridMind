@@ -1,0 +1,77 @@
+{
+ "cv_rmse": {
+  "linear (engineered)": {
+   "mean": 8.961,
+   "folds": [
+    9.231,
+    9.738,
+    8.793,
+    8.084
+   ]
+  },
+  "gradient boosting (engineered)": {
+   "mean": 10.229,
+   "folds": [
+    11.004,
+    10.217,
+    10.552,
+    9.143
+   ]
+  },
+  "random forest (engineered)": {
+   "mean": 11.451,
+   "folds": [
+    11.677,
+    11.542,
+    12.404,
+    10.182
+   ]
+  },
+  "gradient boosting (raw 4 cols)": {
+   "mean": 9.929,
+   "folds": [
+    10.092,
+    9.709,
+    10.875,
+    9.039
+   ]
+  },
+  "default boosting (raw 4 cols)": {
+   "mean": 13.549,
+   "folds": [
+    13.921,
+    13.158,
+    12.404,
+    14.712
+   ]
+  },
+  "starter-kit dummy formula": {
+   "mean": 45.938,
+   "folds": [
+    45.522,
+    46.537,
+    46.446,
+    45.247
+   ]
+  }
+ },
+ "final_in_sample_rmse": 8.501,
+ "interval_90": [
+  -14.731,
+  13.757
+ ],
+ "n_train_rows": 4000,
+ "features": [
+  "ambient_temp_c",
+  "humidity_pct",
+  "solar_irradiance_wm2",
+  "hour_base_load",
+  "cooling_deg",
+  "heating_deg",
+  "cool_night",
+  "cool_morning",
+  "cool_day",
+  "cool_evening",
+  "is_evening_peak"
+ ]
+}
